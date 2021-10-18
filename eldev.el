@@ -4028,6 +4028,50 @@ be passed to Emacs, else it will most likely fail."
         :die-on-error  "child Emacs"
         (eldev--forward-process-output "Output of the child Emacs process:" "Child Emacs process produced no output")))))
 
+;; eldev emacs-docker
+
+(defun eldev--emacs-docker-args (img)
+  "Return command line args to run the docker image IMG."
+  (list "run" "--rm" "-e" "DISPLAY"
+        "-v" (format "%s:/project" eldev-project-dir)
+        "-w" "/project"
+        "-v" "/tmp/.X11-unix:/tmp/.X11-unix"
+        img
+        "eldev" "emacs"))
+
+(eldev-defcommand eldev-emacs-docker (&rest parameters)
+  "Launch a specified Emacs version in a docker container.
+
+This command will launch a specified Emacs version with the project
+loaded with all its dependencies in a docker container.
+
+VERSION must be a valid emacs version, e.g. \"27.2\".
+
+Command line arguments appearing after VERSION will be forwarded to an
+\"eldev emacs\" call within the container."
+  :parameters     "VERSION [ARGS...]"
+  :custom-parsing t
+  (unless (car parameters)
+    (signal 'eldev-wrong-command-usage `(t "version not specified")))
+  (unless (executable-find "docker")
+    (signal 'eldev-error `(t "docker not found on path")))
+  (let ((img (format "silex/emacs:%s-ci-eldev" (car parameters))))
+    (eldev-call-process
+     "docker"
+     (list "pull" img)
+     :pre-execution (eldev-output "Pulling docker image %s" img)
+     :die-on-error "docker pull"
+     (eldev--forward-process-output
+      "Output of docker pull:"
+      "Docker process produced no output"))
+    (eldev-call-process
+     "docker"
+     (append (eldev--emacs-docker-args img) (cdr parameters))
+     :pre-execution (eldev-output "Running docker image %s" img)
+     :die-on-error "docker run"
+     (eldev--forward-process-output
+      "Output of the docker process:"
+      "Docker process produced no output"))))
 
 
 ;; eldev targets, eldev build, eldev compile, eldev package
