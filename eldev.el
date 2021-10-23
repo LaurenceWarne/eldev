@@ -4030,25 +4030,35 @@ be passed to Emacs, else it will most likely fail."
 
 ;; eldev emacs-docker
 
+(defun eldev--emacs-docker-local-dep-mounts ()
+  "Return bind mount arguments of local dependencies for docker run."
+  (mapcan (lambda (local-dep)
+            (let* ((dir (caddr local-dep))
+                   (container-dir (replace-regexp-in-string "^~" "/root" dir)))
+              (list "-v" (format "%s:%s" (expand-file-name dir) container-dir))))
+          eldev--local-dependencies))
+
 (defun eldev--emacs-docker-args (img)
   "Return command line args to run the docker image IMG."
-  (list "run" "--rm" "-e" "DISPLAY"
-        "-v" (format "%s:/project" eldev-project-dir)
-        "-w" "/project"
-        "-v" "/tmp/.X11-unix:/tmp/.X11-unix"
-        img
-        "eldev" "emacs"))
+  (append (list "run" "--rm" "-e" "DISPLAY"
+                "-v" (format "%s:/project" eldev-project-dir)
+                "-w" "/project")
+          (eldev--emacs-docker-local-dep-mounts)
+          (list "-v" "/tmp/.X11-unix:/tmp/.X11-unix"
+                img
+                "eldev")))
 
 (eldev-defcommand eldev-emacs-docker (&rest parameters)
   "Launch a specified Emacs version in a docker container.
 
-This command will launch a specified Emacs version with the project
-loaded with all its dependencies in a docker container.
+This command will execute an eldev command against a specified Emacs
+version with the project loaded with all its dependencies in a docker
+container.
 
 VERSION must be a valid emacs version, e.g. \"27.2\".
 
 Command line arguments appearing after VERSION will be forwarded to an
-\"eldev emacs\" call within the container."
+\"eldev\" call within the container."
   :parameters     "VERSION [ARGS...]"
   :custom-parsing t
   (unless (car parameters)
@@ -4064,14 +4074,17 @@ Command line arguments appearing after VERSION will be forwarded to an
      (eldev--forward-process-output
       "Output of docker pull:"
       "Docker process produced no output"))
-    (eldev-call-process
-     "docker"
-     (append (eldev--emacs-docker-args img) (cdr parameters))
-     :pre-execution (eldev-output "Running docker image %s" img)
-     :die-on-error "docker run"
-     (eldev--forward-process-output
-      "Output of the docker process:"
-      "Docker process produced no output"))))
+    (let ((args (append (eldev--emacs-docker-args img) (cdr parameters))))
+      (eldev-call-process
+       "docker"
+       args
+       :pre-execution
+       (eldev-verbose "Running docker command 'docker %s'"
+                      (mapconcat #'identity args " "))
+       :die-on-error "docker run"
+       (eldev--forward-process-output
+        "Output of the docker process:"
+        "Docker process produced no output")))))
 
 
 ;; eldev targets, eldev build, eldev compile, eldev package
