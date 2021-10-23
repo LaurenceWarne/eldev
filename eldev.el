@@ -4038,15 +4038,20 @@ be passed to Emacs, else it will most likely fail."
               (list "-v" (format "%s:%s" (expand-file-name dir) container-dir))))
           eldev--local-dependencies))
 
-(defun eldev--emacs-docker-args (img)
-  "Return command line args to run the docker image IMG."
-  (append (list "run" "--rm" "-e" "DISPLAY"
+(defun eldev--emacs-gui-args ()
+  "Return arguments needed to launch dockerized Emacs as a GUI."
+  (list "-e" "DISPLAY" "-v" "/tmp/.X11-unix:/tmp/.X11-unix"))
+
+(defun eldev--emacs-docker-args (img &optional as-gui)
+  "Return command line args to run the docker image IMG.
+
+If AS-GUI is non-nil include arguments necessary to run Emacs as a GUI."
+  (append (list "run" "--rm"
                 "-v" (format "%s:/project" eldev-project-dir)
                 "-w" "/project")
+          (when as-gui (eldev--emacs-gui-args))
           (eldev--emacs-docker-local-dep-mounts)
-          (list "-v" "/tmp/.X11-unix:/tmp/.X11-unix"
-                img
-                "eldev")))
+          (list img "eldev")))
 
 (eldev-defcommand eldev-emacs-docker (&rest parameters)
   "Launch a specified Emacs version in a docker container.
@@ -4074,7 +4079,8 @@ Command line arguments appearing after VERSION will be forwarded to an
      (eldev--forward-process-output
       "Output of docker pull:"
       "Docker process produced no output"))
-    (let ((args (append (eldev--emacs-docker-args img) (cdr parameters))))
+    (let* ((as-gui (not (member "--batch" parameters)))
+           (args (append (eldev--emacs-docker-args img as-gui) (cdr parameters))))
       (eldev-call-process
        "docker"
        args
