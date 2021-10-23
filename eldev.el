@@ -4074,7 +4074,7 @@ Command line arguments appearing after VERSION will be forwarded to an
     (eldev-call-process
      "docker"
      (list "pull" img)
-     :pre-execution (eldev-output "Pulling docker image %s" img)
+     :pre-execution (eldev-verbose "Pulling docker image %s" img)
      :die-on-error "docker pull"
      (eldev--forward-process-output
       "Output of docker pull:"
