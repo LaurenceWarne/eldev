@@ -38,6 +38,7 @@ endif::[]
 :uri-iter2: https://github.com/doublep/iter2
 :uri-logview: https://github.com/doublep/logview
 :uri-datetime: https://github.com/doublep/datetime
+:uri-docker-emacs: https://github.com/Silex/docker-emacs
 :since-0-1-1: image:https://img.shields.io/badge/since-0.1.1-8be[Since 0.1.1,float=right]
 :since-0-2: image:https://img.shields.io/badge/since-0.2-8be[Since 0.2,float=right]
 :since-0-2-1: image:https://img.shields.io/badge/since-0.2.1-8be[Since 0.2.1,float=right]
@@ -1578,6 +1579,18 @@ ____
 Therefore, if you use byte-compilation and switch Emacs versions,
 don’t forget to clean the directory.
 
+Alternatively, if you are on a nix system and have `docker` installed,
+then Eldev supports running arbitrary commands from within containers
+based on the images distributed by {uri-docker-emacs}[docker-emacs].
+For example:
+
+    $ eldev emacs-docker 27.2 eldev emacs --foreground-color=red --eval '(insert (format "Emacs version: %s" emacs-version))'
+
+Will start an Emacs 27.2 container and run `eldev emacs --foreground-color=red --eval '(insert (format "Emacs version: %s" emacs-version))'`.
+
+*Note* You may have to run `xhost +local:root` which allows the
+docker container to make connections to the hosts X server.  Note however
+this does come with some security considerations (`man xhost`).
 
 [#continuous-integration]
 == Continuous integration
