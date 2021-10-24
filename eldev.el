@@ -4030,6 +4030,24 @@ be passed to Emacs, else it will most likely fail."
 
 ;; eldev emacs-docker
 
+(defvar eldev-docker-executable "docker"
+  "Executable to call when executing docker commands.")
+
+(defvar eldev-docker-img-fn #'eldev--docker-img-fn
+  "Function used to map Emacs versions to docker images.
+
+The function should take an Emacs version as an argument and return the
+name of the docker image to use.  The default returns eldev-ci images from
+URL 'https://github.com/Silex/docker-emacs'.")
+
+(defvar eldev--emacs-gui-args
+  (list "-e" "DISPLAY" "-v" "/tmp/.X11-unix:/tmp/.X11-unix")
+  "Arguments needed to launch dockerized Emacs as a GUI.")
+
+(defun eldev--docker-img-fn (target-version)
+  "Return an appropriate ci-eldev image based on TARGET-VERSION."
+  (format "silex/emacs:%s-ci-eldev" target-version))
+
 (defun eldev--emacs-docker-local-dep-mounts ()
   "Return bind mount arguments of local dependencies for docker run."
   (mapcan (lambda (local-dep)
@@ -4038,10 +4056,6 @@ be passed to Emacs, else it will most likely fail."
               (list "-v" (format "%s:%s" (expand-file-name dir) container-dir))))
           eldev--local-dependencies))
 
-(defun eldev--emacs-gui-args ()
-  "Return arguments needed to launch dockerized Emacs as a GUI."
-  (list "-e" "DISPLAY" "-v" "/tmp/.X11-unix:/tmp/.X11-unix"))
-
 (defun eldev--emacs-docker-args (img &optional as-gui)
   "Return command line args to run the docker image IMG.
 
@@ -4049,11 +4063,11 @@ If AS-GUI is non-nil include arguments necessary to run Emacs as a GUI."
   (append (list "run" "--rm"
                 "-v" (format "%s:/project" eldev-project-dir)
                 "-w" "/project")
-          (when as-gui (eldev--emacs-gui-args))
+          (when as-gui eldev--emacs-gui-args)
           (eldev--emacs-docker-local-dep-mounts)
           (list img "eldev")))
 
-(eldev-defcommand eldev-emacs-docker (&rest parameters)
+(eldev-defcommand eldev-docker (&rest parameters)
   "Launch a specified Emacs version in a docker container.
 
 This command will execute an eldev command against a specified Emacs
@@ -4065,32 +4079,35 @@ VERSION must be a valid emacs version, e.g. \"27.2\".
 Command line arguments appearing after VERSION will be forwarded to an
 \"eldev\" call within the container."
   :parameters     "VERSION [ARGS...]"
+  :aliases        emacs-docker
   :custom-parsing t
   (unless (car parameters)
     (signal 'eldev-wrong-command-usage `(t "version not specified")))
-  (unless (executable-find "docker")
-    (signal 'eldev-error `(t "docker not found on path")))
-  (let ((img (format "silex/emacs:%s-ci-eldev" (car parameters))))
+  (unless (executable-find eldev-docker-executable)
+    (signal 'eldev-error
+            `(t (format "%s not found on path" eldev-docker-executable))))
+  (let ((img (funcall eldev-docker-img-fn (car parameters))))
     (eldev-call-process
-     "docker"
+     eldev-docker-executable
      (list "pull" img)
-     :pre-execution (eldev-verbose "Pulling docker image %s" img)
-     :die-on-error "docker pull"
+     :pre-execution (eldev-verbose "Pulling image %s" img)
+     :die-on-error (format "%s pull" eldev-docker-executable)
      (eldev--forward-process-output
-      "Output of docker pull:"
-      "Docker process produced no output"))
+      (format "Output of %s pull:" eldev-docker-executable)
+      (format "%s process produced no output" eldev-docker-executable))
     (let* ((as-gui (not (member "--batch" parameters)))
            (args (append (eldev--emacs-docker-args img as-gui) (cdr parameters))))
       (eldev-call-process
-       "docker"
+       eldev-docker-executable
        args
        :pre-execution
-       (eldev-verbose "Running docker command 'docker %s'"
+       (eldev-verbose "Running command '%s %s'"
+                      eldev-docker-executable
                       (mapconcat #'identity args " "))
-       :die-on-error "docker run"
+       :die-on-error (format "%s run" eldev-docker-executable)
        (eldev--forward-process-output
-        "Output of the docker process:"
-        "Docker process produced no output")))))
+        (format "Output of the %s process:" eldev-docker-executable)
+        (format "%s process produced no output" eldev-docker-executable)))))))
 
 
 ;; eldev targets, eldev build, eldev compile, eldev package

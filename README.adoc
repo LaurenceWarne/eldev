@@ -1584,7 +1584,7 @@ then Eldev supports running arbitrary commands from within containers
 based on the images distributed by {uri-docker-emacs}[docker-emacs].
 For example:
 
-    $ eldev emacs-docker 27.2 eldev emacs --foreground-color=red --eval '(insert (format "Emacs version: %s" emacs-version))'
+    $ eldev docker 27.2 emacs --foreground-color=red --eval '(insert (format "Emacs version: %s" emacs-version))'
 
 Will start an Emacs 27.2 container and run `eldev emacs --foreground-color=red --eval '(insert (format "Emacs version: %s" emacs-version))'`.
 
