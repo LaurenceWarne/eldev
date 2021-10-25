@@ -4033,9 +4033,6 @@ be passed to Emacs, else it will most likely fail."
 
 ;; eldev emacs-docker
 
-(defvar eldev-docker-executable "docker"
-  "Executable to call when executing docker commands.")
-
 (defvar eldev--emacs-gui-args
   (list "-e" "DISPLAY" "-v" "/tmp/.X11-unix:/tmp/.X11-unix")
   "Arguments needed to launch dockerized Emacs as a GUI.")
@@ -4048,15 +4045,16 @@ be passed to Emacs, else it will most likely fail."
 
 (defun eldev--docker-local-dep-mounts ()
   "Return bind mount arguments of local dependencies for docker run."
-  (mapcan (lambda (local-dep)
-            (let* ((dir (nth 4 local-dep))
-                   (dir-rel (file-relative-name dir (expand-file-name "~")))
-                   (container-dir
-                    (if (eldev-external-filename dir-rel)
-                        (concat "/root/" dir-rel)
-                      dir)))
-              (list "-v" (format "%s:%s" (expand-file-name dir) container-dir))))
-          eldev--local-dependencies))
+  (eldev-flatten-tree
+   (mapcar (lambda (local-dep)
+             (let* ((dir (nth 4 local-dep))
+                    (dir-rel (file-relative-name dir (expand-file-name "~")))
+                    (container-dir
+                     (if (eldev-external-filename dir-rel)
+                         (concat "/root/" dir-rel)
+                       dir)))
+               (list "-v" (format "%s:%s" (expand-file-name dir) container-dir))))
+           eldev--local-dependencies)))
 
 (defun eldev--docker-args (img &optional as-gui)
   "Return command line args to run the docker image IMG.
@@ -4101,32 +4099,29 @@ Command line arguments appearing after VERSION will be forwarded to an
   :custom-parsing t
   (unless (car parameters)
     (signal 'eldev-wrong-command-usage `(t "version not specified")))
-  (unless (executable-find eldev-docker-executable)
-    (signal 'eldev-error
-            `(t (format "%s not found on path" eldev-docker-executable))))
-  (let* ((img (eldev--docker-determine-img (car parameters))))
+  (let* ((img (eldev--docker-determine-img (car parameters)))
+         (docker-exec (eldev-docker-executable)))
     (eldev-call-process
-     eldev-docker-executable
+     docker-exec
      (list "pull" img)
      :pre-execution (eldev-verbose "Pulling image from %s" img)
-     :die-on-error (format "%s pull" eldev-docker-executable)
+     :die-on-error (format "%s pull" docker-exec)
      (eldev--forward-process-output
-      (format "Output of %s pull:" eldev-docker-executable)
-      (format "%s process produced no output" eldev-docker-executable))
+      (format "Output of %s pull:" docker-exec)
+      (format "%s process produced no output" docker-exec))
     (let* ((as-gui (not (member "--batch" parameters)))
-           (args (append (eldev--docker-args img as-gui)
-                         (cdr parameters))))
+           (args (append (eldev--docker-args img as-gui) (cdr parameters))))
       (eldev-call-process
-       eldev-docker-executable
+       docker-exec
        args
        :pre-execution
        (eldev-verbose "Running command '%s %s'"
-                      eldev-docker-executable
+                      docker-exec
                       (mapconcat #'identity args " "))
-       :die-on-error (format "%s run" eldev-docker-executable)
+       :die-on-error (format "%s run" docker-exec)
        (eldev--forward-process-output
-        (format "Output of the %s process:" eldev-docker-executable)
-        (format "%s process produced no output" eldev-docker-executable)))))))
+        (format "Output of the %s process:" docker-exec)
+        (format "%s process produced no output" docker-exec)))))))
 
 
 ;; eldev targets, eldev build, eldev compile, eldev package
