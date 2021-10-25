@@ -4036,20 +4036,15 @@ be passed to Emacs, else it will most likely fail."
 (defvar eldev-docker-executable "docker"
   "Executable to call when executing docker commands.")
 
-(defvar eldev-docker-img-fn #'eldev--docker-img-fn
-  "Function used to map Emacs versions to docker images.
-
-The function should take an Emacs version as an argument and return the
-name of the docker image to use.  The default returns eldev-ci images from
-URL 'https://github.com/Silex/docker-emacs'.")
-
 (defvar eldev--emacs-gui-args
   (list "-e" "DISPLAY" "-v" "/tmp/.X11-unix:/tmp/.X11-unix")
   "Arguments needed to launch dockerized Emacs as a GUI.")
 
-(defun eldev--docker-img-fn (target-version)
-  "Return an appropriate ci-eldev image based on TARGET-VERSION."
-  (format "silex/emacs:%s-ci-eldev" target-version))
+(defun eldev--docker-determine-img (img-string)
+  "Return an appropriate docker image based on IMG-STRING."
+  (if (string-match-p ".*/.*" img-string)
+      img-string
+    (format "silex/emacs:%s-ci-eldev" img-string)))
 
 (defun eldev--docker-local-dep-mounts ()
   "Return bind mount arguments of local dependencies for docker run."
@@ -4091,6 +4086,14 @@ container.
 
 VERSION must be a valid emacs version, e.g. \"27.2\".
 
+A repository name/full image name may also be used in place of VERSION,
+in which case it will be fed directly to \"docker pull\".  Any string
+containing a \"/\" will be interpreted as such rather than an Emacs
+version.
+
+Note it will be assumed that eldev is installed on any image that is
+run.
+
 Command line arguments appearing after VERSION will be forwarded to an
 \"eldev\" call within the container."
   :parameters     "VERSION [ARGS...]"
@@ -4101,11 +4104,11 @@ Command line arguments appearing after VERSION will be forwarded to an
   (unless (executable-find eldev-docker-executable)
     (signal 'eldev-error
             `(t (format "%s not found on path" eldev-docker-executable))))
-  (let* ((img (funcall eldev-docker-img-fn (car parameters))))
+  (let* ((img (eldev--docker-determine-img (car parameters))))
     (eldev-call-process
      eldev-docker-executable
      (list "pull" img)
-     :pre-execution (eldev-verbose "Pulling image %s" img)
+     :pre-execution (eldev-verbose "Pulling image from %s" img)
      :die-on-error (format "%s pull" eldev-docker-executable)
      (eldev--forward-process-output
       (format "Output of %s pull:" eldev-docker-executable)
