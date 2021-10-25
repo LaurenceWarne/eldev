@@ -4051,19 +4051,19 @@ URL 'https://github.com/Silex/docker-emacs'.")
   "Return an appropriate ci-eldev image based on TARGET-VERSION."
   (format "silex/emacs:%s-ci-eldev" target-version))
 
-(defun eldev--emacs-docker-local-dep-mounts ()
+(defun eldev--docker-local-dep-mounts ()
   "Return bind mount arguments of local dependencies for docker run."
   (mapcan (lambda (local-dep)
-            (let* ((dir (cadddr local-dep))
-                   (home (getenv "HOME"))
+            (let* ((dir (nth 4 local-dep))
+                   (dir-rel (file-relative-name dir (expand-file-name "~")))
                    (container-dir
-                    (if (string-prefix-p home dir)
-                        (concat "/root/" (file-relative-name dir home))
+                    (if (eldev-external-filename dir-rel)
+                        (concat "/root/" dir-rel)
                       dir)))
               (list "-v" (format "%s:%s" (expand-file-name dir) container-dir))))
           eldev--local-dependencies))
 
-(defun eldev--emacs-docker-args (img &optional as-gui)
+(defun eldev--docker-args (img &optional as-gui)
   "Return command line args to run the docker image IMG.
 
 The global config file and cache will be mounted unless
@@ -4079,7 +4079,7 @@ If AS-GUI is non-nil include arguments necessary to run Emacs as a GUI."
                   "-v" (format "%s:/root/.eldev/%s"
                                (eldev-global-package-archive-cache-dir)
                                eldev-global-cache-directory-name)))
-          (eldev--emacs-docker-local-dep-mounts)
+          (eldev--docker-local-dep-mounts)
           (list img "eldev")))
 
 (eldev-defcommand eldev-docker (&rest parameters)
@@ -4111,7 +4111,7 @@ Command line arguments appearing after VERSION will be forwarded to an
       (format "Output of %s pull:" eldev-docker-executable)
       (format "%s process produced no output" eldev-docker-executable))
     (let* ((as-gui (not (member "--batch" parameters)))
-           (args (append (eldev--emacs-docker-args img as-gui)
+           (args (append (eldev--docker-args img as-gui)
                          (cdr parameters))))
       (eldev-call-process
        eldev-docker-executable
