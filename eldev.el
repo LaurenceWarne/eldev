@@ -4051,8 +4051,12 @@ URL 'https://github.com/Silex/docker-emacs'.")
 (defun eldev--emacs-docker-local-dep-mounts ()
   "Return bind mount arguments of local dependencies for docker run."
   (mapcan (lambda (local-dep)
-            (let* ((dir (caddr local-dep))
-                   (container-dir (replace-regexp-in-string "^~" "/root" dir)))
+            (let* ((dir (cadddr local-dep))
+                   (home (getenv "HOME"))
+                   (container-dir
+                    (if (string-prefix-p home dir)
+                        (concat "/root/" (file-relative-name dir home))
+                      dir)))
               (list "-v" (format "%s:%s" (expand-file-name dir) container-dir))))
           eldev--local-dependencies))
 
