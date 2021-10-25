@@ -111,6 +111,9 @@ instead.")
   "Name of Eldev cache subdirectory, `.eldev'.
 See also function `eldev-cache-dir'.")
 
+(defconst eldev-global-cache-directory-name "global-cache"
+  "Name of the global cache directory (a subdirectory of `eldev-dir').")
+
 (defvar eldev--internal-pseudoarchive "--eldev--")
 
 (defvar eldev--loading-modes
@@ -977,7 +980,7 @@ Returns COMMAND-LINE with options removed."
       (nreverse without-options))))
 
 (defun eldev-global-package-archive-cache-dir ()
-  (expand-file-name "global-cache" eldev-dir))
+  (expand-file-name eldev-global-cache-directory-name eldev-dir))
 
 (defun eldev-cache-dir (emacs-version-specific &optional ensure-exists)
   "Get the directory where various internal caches should be stored.
@@ -4063,11 +4066,19 @@ URL 'https://github.com/Silex/docker-emacs'.")
 (defun eldev--emacs-docker-args (img &optional as-gui)
   "Return command line args to run the docker image IMG.
 
+The global config file and cache will be mounted unless
+`eldev-skip-global-config' is nil.
+
 If AS-GUI is non-nil include arguments necessary to run Emacs as a GUI."
   (append (list "run" "--rm"
                 "-v" (format "%s:/project" eldev-project-dir)
                 "-w" "/project")
           (when as-gui eldev--emacs-gui-args)
+          (unless eldev-skip-global-config
+            (list "-v" (format "%s:/root/.eldev/config" eldev-user-config-file)
+                  "-v" (format "%s:/root/.eldev/%s"
+                               (eldev-global-package-archive-cache-dir)
+                               eldev-global-cache-directory-name)))
           (eldev--emacs-docker-local-dep-mounts)
           (list img "eldev")))
 
@@ -4090,7 +4101,7 @@ Command line arguments appearing after VERSION will be forwarded to an
   (unless (executable-find eldev-docker-executable)
     (signal 'eldev-error
             `(t (format "%s not found on path" eldev-docker-executable))))
-  (let ((img (funcall eldev-docker-img-fn (car parameters))))
+  (let* ((img (funcall eldev-docker-img-fn (car parameters))))
     (eldev-call-process
      eldev-docker-executable
      (list "pull" img)
@@ -4100,7 +4111,8 @@ Command line arguments appearing after VERSION will be forwarded to an
       (format "Output of %s pull:" eldev-docker-executable)
       (format "%s process produced no output" eldev-docker-executable))
     (let* ((as-gui (not (member "--batch" parameters)))
-           (args (append (eldev--emacs-docker-args img as-gui) (cdr parameters))))
+           (args (append (eldev--emacs-docker-args img as-gui)
+                         (cdr parameters))))
       (eldev-call-process
        eldev-docker-executable
        args
