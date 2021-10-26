@@ -10,7 +10,7 @@
        "--batch"
        "--eval"
        `(prin1 (+ 1 2)))
-    (should (string= (substring (string-trim-right stdout "\n*") -1) "3"))
+    (should (string= (substring (string-trim-right stdout) -1) "3"))
     (should (= exit-code 0))))
 
 (provide 'test/emacs-docker)
