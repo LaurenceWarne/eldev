@@ -4037,6 +4037,9 @@ be passed to Emacs, else it will most likely fail."
   (list "-e" "DISPLAY" "-v" "/tmp/.X11-unix:/tmp/.X11-unix")
   "Arguments needed to launch dockerized Emacs as a GUI.")
 
+(defvar eldev-docker-run-extra-args nil
+  "Extra arguments to pass to \"docker run\".")
+
 (defun eldev--docker-determine-img (img-string)
   "Return an appropriate docker image based on IMG-STRING."
   (if (string-match-p ".*/.*" img-string)
@@ -4063,17 +4066,22 @@ The global config file and cache will be mounted unless
 `eldev-skip-global-config' is nil.
 
 If AS-GUI is non-nil include arguments necessary to run Emacs as a GUI."
-  (append (list "run" "--rm"
-                "-v" (format "%s:/project" eldev-project-dir)
-                "-w" "/project")
-          (when as-gui eldev--emacs-gui-args)
-          (unless eldev-skip-global-config
-            (list "-v" (format "%s:/root/.eldev/config" eldev-user-config-file)
-                  "-v" (format "%s:/root/.eldev/%s"
-                               (eldev-global-package-archive-cache-dir)
-                               eldev-global-cache-directory-name)))
-          (eldev--docker-local-dep-mounts)
-          (list img "eldev")))
+  (eldev-output (format "%s" package-archives))
+  (eldev-output (format "%s" eldev-docker-run-extra-args))
+  (let ((container-dir (file-name-nondirectory
+                        (directory-file-name eldev-project-dir))))
+    (append (list "run" "--rm"
+                  "-v" (format "%s:/%s" eldev-project-dir container-dir)
+                  "-w" (concat "/" container-dir))
+            (when as-gui eldev--emacs-gui-args)
+            (unless eldev-skip-global-config
+              (list "-v" (format "%s:/root/.eldev/config" eldev-user-config-file)
+                    "-v" (format "%s:/root/.eldev/%s"
+                                 (eldev-global-package-archive-cache-dir)
+                                 eldev-global-cache-directory-name)))
+            (eldev--docker-local-dep-mounts)
+            eldev-docker-run-extra-args
+            (list img "eldev"))))
 
 (eldev-defcommand eldev-docker (&rest parameters)
   "Launch a specified Emacs version in a docker container.
@@ -4082,18 +4090,25 @@ This command will execute an eldev command against a specified Emacs
 version with the project loaded with all its dependencies in a docker
 container.
 
-VERSION must be a valid emacs version, e.g. \"27.2\".
+VERSION must be a valid Emacs version, e.g. \"27.2\".
 
 A repository name/full image name may also be used in place of VERSION,
-in which case it will be fed directly to \"docker pull\".  Any string
-containing a \"/\" will be interpreted as such rather than an Emacs
-version.
+in which case it will be fed directly to \"docker pull\" and
+\"docker run\".  Any string containing a \"/\" will be interpreted as
+such rather than an Emacs version.
 
 Note it will be assumed that eldev is installed on any image that is
 run.
 
 Command line arguments appearing after VERSION will be forwarded to an
-\"eldev\" call within the container."
+\"eldev\" call within the container.  For example:
+
+    eldev docker 25 emacs
+
+Will run \"eldev emacs\" inside an Emacs 25 container.
+
+Emacs will not be started as a GUI unless the command is \"emacs\" and
+the \"--batch\" flag is not present."
   :parameters     "VERSION [ARGS...]"
   :aliases        emacs-docker
   :custom-parsing t
@@ -4102,26 +4117,30 @@ Command line arguments appearing after VERSION will be forwarded to an
   (let* ((img (eldev--docker-determine-img (car parameters)))
          (docker-exec (eldev-docker-executable)))
     (eldev-call-process
-     docker-exec
-     (list "pull" img)
-     :pre-execution (eldev-verbose "Pulling image from %s" img)
-     :die-on-error (format "%s pull" docker-exec)
-     (eldev--forward-process-output
-      (format "Output of %s pull:" docker-exec)
-      (format "%s process produced no output" docker-exec))
-    (let* ((as-gui (not (member "--batch" parameters)))
-           (args (append (eldev--docker-args img as-gui) (cdr parameters))))
-      (eldev-call-process
-       docker-exec
-       args
-       :pre-execution
-       (eldev-verbose "Running command '%s %s'"
-                      docker-exec
-                      (mapconcat #'identity args " "))
-       :die-on-error (format "%s run" docker-exec)
-       (eldev--forward-process-output
-        (format "Output of the %s process:" docker-exec)
-        (format "%s process produced no output" docker-exec)))))))
+        docker-exec
+        (list "pull" img)
+      :pre-execution (eldev-verbose "Pulling image from %s" img)
+      :die-on-error (format "%s pull" docker-exec)
+      (eldev--forward-process-output
+       (format "Output of %s pull:" docker-exec)
+       (format "%s process produced no output" docker-exec))
+      (let* ((as-gui (and (string= "emacs" (nth 2 parameters))
+                          (not (member "--batch" parameters))))
+             (args (append (eldev--docker-args img as-gui) (cdr parameters))))
+        (eldev-output "Running command '%s %s'"
+                         docker-exec
+                         (mapconcat #'identity args " "))
+        (eldev-call-process
+            docker-exec
+            args
+          :pre-execution
+          (eldev-verbose "Running command '%s %s'"
+                         docker-exec
+                         (mapconcat #'identity args " "))
+          :die-on-error (format "%s run" docker-exec)
+          (eldev--forward-process-output
+           (format "Output of the %s process:" docker-exec)
+           (format "%s process produced no output" docker-exec)))))))
 
 
 ;; eldev targets, eldev build, eldev compile, eldev package
