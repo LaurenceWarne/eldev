@@ -4113,32 +4113,24 @@ the \"--batch\" flag is not present."
   (unless (car parameters)
     (signal 'eldev-wrong-command-usage `(t "version not specified")))
   (let* ((img (eldev--docker-determine-img (car parameters)))
-         (docker-exec (eldev-docker-executable)))
+         (docker-exec (eldev-docker-executable))
+         (as-gui (and (string= "emacs" (nth 1 parameters))
+                      (not (member "--batch" parameters))))
+         (args (append (eldev--docker-args img as-gui) (cdr parameters))))
+    (eldev-output "Running command '%s %s'"
+                  docker-exec
+                  (mapconcat #'identity args " "))
     (eldev-call-process
         docker-exec
-        (list "pull" img)
-      :pre-execution (eldev-verbose "Pulling image from %s" img)
-      :die-on-error (format "%s pull" docker-exec)
+        args
+      :pre-execution
+      (eldev-verbose "Running command '%s %s'"
+                     docker-exec
+                     (mapconcat #'identity args " "))
+      :die-on-error (format "%s run" docker-exec)
       (eldev--forward-process-output
-       (format "Output of %s pull:" docker-exec)
-       (format "%s process produced no output" docker-exec))
-      (let* ((as-gui (and (string= "emacs" (nth 1 parameters))
-                          (not (member "--batch" parameters))))
-             (args (append (eldev--docker-args img as-gui) (cdr parameters))))
-        (eldev-output "Running command '%s %s'"
-                         docker-exec
-                         (mapconcat #'identity args " "))
-        (eldev-call-process
-            docker-exec
-            args
-          :pre-execution
-          (eldev-verbose "Running command '%s %s'"
-                         docker-exec
-                         (mapconcat #'identity args " "))
-          :die-on-error (format "%s run" docker-exec)
-          (eldev--forward-process-output
-           (format "Output of the %s process:" docker-exec)
-           (format "%s process produced no output" docker-exec)))))))
+       (format "Output of the %s process:" docker-exec)
+       (format "%s process produced no output" docker-exec)))))
 
 
 ;; eldev targets, eldev build, eldev compile, eldev package
