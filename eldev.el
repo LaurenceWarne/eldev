@@ -4050,12 +4050,12 @@ be passed to Emacs, else it will most likely fail."
   "Return bind mount arguments of local dependencies for docker run."
   (eldev-flatten-tree
    (mapcar (lambda (local-dep)
-             (let* ((dir (nth 4 local-dep))
+             (let* ((dir (nth 3 local-dep))
                     (dir-rel (file-relative-name dir (expand-file-name "~")))
                     (container-dir
                      (if (eldev-external-filename dir-rel)
-                         (concat "/root/" dir-rel)
-                       dir)))
+                         dir
+                       (concat "/root/" dir-rel))))
                (list "-v" (format "%s:%s" (expand-file-name dir) container-dir))))
            eldev--local-dependencies)))
 
@@ -4066,8 +4066,6 @@ The global config file and cache will be mounted unless
 `eldev-skip-global-config' is nil.
 
 If AS-GUI is non-nil include arguments necessary to run Emacs as a GUI."
-  (eldev-output (format "%s" package-archives))
-  (eldev-output (format "%s" eldev-docker-run-extra-args))
   (let ((container-dir (file-name-nondirectory
                         (directory-file-name eldev-project-dir))))
     (append (list "run" "--rm"
@@ -4124,7 +4122,7 @@ the \"--batch\" flag is not present."
       (eldev--forward-process-output
        (format "Output of %s pull:" docker-exec)
        (format "%s process produced no output" docker-exec))
-      (let* ((as-gui (and (string= "emacs" (nth 2 parameters))
+      (let* ((as-gui (and (string= "emacs" (nth 1 parameters))
                           (not (member "--batch" parameters))))
              (args (append (eldev--docker-args img as-gui) (cdr parameters))))
         (eldev-output "Running command '%s %s'"
