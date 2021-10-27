@@ -4046,40 +4046,63 @@ be passed to Emacs, else it will most likely fail."
       img-string
     (format "silex/emacs:%s-ci-eldev" img-string)))
 
-(defun eldev--docker-local-dep-mounts ()
-  "Return bind mount arguments of local dependencies for docker run."
-  (eldev-flatten-tree
-   (mapcar (lambda (local-dep)
-             (let* ((dir (nth 3 local-dep))
-                    (dir-rel (file-relative-name dir (expand-file-name "~")))
-                    (container-dir
-                     (if (eldev-external-filename dir-rel)
-                         dir
-                       (concat "/root/" dir-rel))))
-               (list "-v" (format "%s:%s" (expand-file-name dir) container-dir))))
-           eldev--local-dependencies)))
+(defun eldev--container-project-dir ()
+  "Return the directory of the project in a docker container."
+  (file-name-nondirectory (directory-file-name eldev-project-dir)))
 
-(defun eldev--docker-args (img &optional as-gui)
-  "Return command line args to run the docker image IMG.
-
-The global config file and cache will be mounted unless
-`eldev-skip-global-config' is nil.
+(defun eldev--docker-create-args (img &optional as-gui)
+  "Return command line args to \"docker create\" for the docker image IMG.
 
 If AS-GUI is non-nil include arguments necessary to run Emacs as a GUI."
-  (let ((container-dir (file-name-nondirectory
-                        (directory-file-name eldev-project-dir))))
-    (append (list "run" "--rm"
-                  "-v" (format "%s:/%s" eldev-project-dir container-dir)
-                  "-w" (concat "/" container-dir))
-            (when as-gui eldev--emacs-gui-args)
-            (unless eldev-skip-global-config
-              (list "-v" (format "%s:/root/.eldev/config" eldev-user-config-file)
-                    "-v" (format "%s:/root/.eldev/%s"
-                                 (eldev-global-package-archive-cache-dir)
-                                 eldev-global-cache-directory-name)))
-            (eldev--docker-local-dep-mounts)
-            eldev-docker-run-extra-args
-            (list img "eldev"))))
+  (append (list "create" "--rm" "-w" (concat "/" (eldev--container-project-dir)))
+          (when as-gui eldev--emacs-gui-args)
+          eldev-docker-run-extra-args
+          (list img "eldev")))
+
+(defun eldev--docker-local-cp-args (container-id)
+  "Return arguments corresponding to docker cp calls for local dependencies.
+
+CONTAINER-ID is the id of the docker \"docker cp\" will operate on.
+
+Only one file/directory can be copied at a time with each \"docker cp\"
+invocation so this function returns lists of lists of args."
+   (mapcar (lambda (local-dep)
+            (let* ((dir (nth 3 local-dep))
+                   (dir-rel (file-relative-name dir (expand-file-name "~")))
+                   (container-dir
+                    (if (eldev-external-filename dir-rel)
+                        dir
+                      (concat "/root/" dir-rel))))
+              (list "cp"
+                    (expand-file-name dir)
+                    (format "%s:%s" container-id container-dir))))
+          eldev--local-dependencies))
+
+(defun eldev--docker-cp-args (container-id)
+  "Return a list of docker cp invocations.
+
+Return a list of list of args corresponding to \"docker cp CONTAINER-ID\"
+invocations.
+
+Only one file/directory can be copied at a time with each \"docker cp\"
+invocation so this function returns lists of lists of args.
+
+The global config file and cache will be mounted unless
+`eldev-skip-global-config' is nil."
+  (delq nil
+        (list (list "cp" eldev-project-dir (format "%s:/" container-id))
+              (when (and (file-exists-p eldev-user-config-file)
+                         (not eldev-skip-global-config))
+                (list "cp"
+                      eldev-user-config-file
+                      (format "%s:/root/.eldev/config" container-id)))
+              (let ((cache-dir (eldev-global-package-archive-cache-dir))
+                    (path (format "%s:/root/.eldev/%s"
+                                  container-id
+                                  eldev-global-cache-directory-name)))
+                (when (and (file-exists-p path) (not eldev-skip-global-config))
+                  (list "cp" cache-dir path)))
+              (eldev--docker-local-cp-args container-id))))
 
 (eldev-defcommand eldev-docker (&rest parameters)
   "Launch a specified Emacs version in a docker container.
@@ -4116,21 +4139,40 @@ the \"--batch\" flag is not present."
          (docker-exec (eldev-docker-executable))
          (as-gui (and (string= "emacs" (nth 1 parameters))
                       (not (member "--batch" parameters))))
-         (args (append (eldev--docker-args img as-gui) (cdr parameters))))
-    (eldev-output "Running command '%s %s'"
-                  docker-exec
-                  (mapconcat #'identity args " "))
+         (create-args (append (eldev--docker-create-args img as-gui)
+                              (cdr parameters))))
     (eldev-call-process
         docker-exec
-        args
+        create-args
       :pre-execution
       (eldev-verbose "Running command '%s %s'"
                      docker-exec
-                     (mapconcat #'identity args " "))
-      :die-on-error (format "%s run" docker-exec)
-      (eldev--forward-process-output
-       (format "Output of the %s process:" docker-exec)
-       (format "%s process produced no output" docker-exec)))))
+                     (mapconcat #'identity create-args " "))
+      :die-on-error (format "%s create" docker-exec)
+      (let* ((container-id (string-trim-right (buffer-string)))
+             (cp-args (eldev--docker-cp-args container-id)))
+        (eldev-verbose (format "container id: %s" container-id))
+        (mapc (lambda (cp-arg-set)
+                (eldev-call-process
+                    docker-exec
+                    cp-arg-set
+                  :pre-execution
+                  (eldev-verbose "Running command '%s %s'"
+                                 docker-exec
+                                 (mapconcat #'identity cp-arg-set " "))
+                  :die-on-error (format "%s cp" docker-exec)))
+              cp-args)
+        (eldev-call-process
+            docker-exec
+            (list "start" "-a" container-id)
+          :pre-execution
+          (eldev-verbose "Running command '%s start -a %s'"
+                         docker-exec
+                         container-id)
+          :die-on-error (format "%s start" docker-exec)
+          (eldev--forward-process-output
+           (format "Output of the %s process:" docker-exec)
+           (format "%s process produced no output" docker-exec)))))))
 
 
 ;; eldev targets, eldev build, eldev compile, eldev package
