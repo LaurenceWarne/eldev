@@ -17,12 +17,12 @@
 
 (ert-deftest eldev-docker-test-1 ()
   (skip-unless (eldev-docker-executable nil))
+  (eldev--test-run "project-c" ("clean" "all")
+    (should (= exit-code 0)))
   (eldev--test-run "project-c"
       ("docker"
        eldev--docker-emacs-version
-       "--trace"
        "test")
-    (eldev-output stdout)
     (should (= exit-code 0))))
 
 (provide 'test/emacs-docker)
