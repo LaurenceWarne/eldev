@@ -926,7 +926,7 @@ Can be set explicitly or left to t, in which case it is located
 through `executable-find' if possible.  Since Eldev 0.8.")
 
 (defvar eldev-docker-executable t
-  "Docker executable (svnadmin).
+  "Docker executable.
 Can be set explicitly or left to t, in which case it is located
 through `executable-find' if possible.")
 
