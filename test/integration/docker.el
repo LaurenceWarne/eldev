@@ -5,9 +5,12 @@
 (ert-deftest eldev-docker-emacs-1 ()
   (skip-unless (eldev-docker-executable nil))
   (eldev--test-run "trivial-project"
-      ("--quiet"
+      ("--debug"
+       "-b"
        "docker"
        eldev--docker-emacs-version
+       "--debug"
+       "-b"
        "emacs"
        "--batch"
        "--eval"

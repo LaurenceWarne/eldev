@@ -69,6 +69,8 @@
 
 ;;; Code:
 
+(require 'subr-x)
+
 (require 'eldev-util)
 
 
@@ -4160,7 +4162,10 @@ the \"--batch\" flag is not present."
                   (eldev-verbose "Running command '%s %s'"
                                  docker-exec
                                  (mapconcat #'identity cp-arg-set " "))
-                  :die-on-error (format "%s cp" docker-exec)))
+                  :die-on-error (format "%s cp" docker-exec)
+                  (eldev--forward-process-output
+                   (format "Output of the %s process:" docker-exec)
+                   (format "%s process produced no output" docker-exec))))
               cp-args)
         (eldev-call-process
             docker-exec
