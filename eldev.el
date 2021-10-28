@@ -4054,13 +4054,8 @@ be passed to Emacs, else it will most likely fail."
   "Return bind mount arguments of local dependencies for docker run."
   (eldev-flatten-tree
    (mapcar (lambda (local-dep)
-             (let* ((dir (nth 3 local-dep))
-                    (dir-rel (file-relative-name dir (expand-file-name "~")))
-                    (container-dir
-                     (if (eldev-external-filename dir-rel)
-                         dir
-                       (concat "/root/" dir-rel))))
-               (list "-v" (format "%s:%s" (expand-file-name dir) container-dir))))
+             (let ((dir (expand-file-name (nth 3 local-dep))))
+               (list "-v" (format "%s:%s" dir dir))))
            eldev--local-dependencies)))
 
 (defun eldev--docker-args (img &optional as-gui)
@@ -4070,20 +4065,23 @@ The global config file and cache will be mounted unless
 `eldev-skip-global-config' is nil.
 
 If AS-GUI is non-nil include arguments necessary to run Emacs as a GUI."
-  (let ((container-dir (file-name-nondirectory
-                        (directory-file-name eldev-project-dir))))
-    (append (list "run" "--rm"
-                  "-v" (format "%s:/%s" eldev-project-dir container-dir)
-                  "-w" (concat "/" container-dir))
-            (when as-gui eldev--emacs-gui-args)
-            (unless eldev-skip-global-config
-              (list "-v" (format "%s:/root/.eldev/config" eldev-user-config-file)
-                    "-v" (format "%s:/root/.eldev/%s"
-                                 (eldev-global-package-archive-cache-dir)
-                                 eldev-global-cache-directory-name)))
-            (eldev--docker-local-dep-mounts)
-            eldev-docker-run-extra-args
-            (list img "eldev"))))
+  (append (list "run" "--rm"
+                ;; Assume the project dir lies in the user's home directory
+                "-v" (format "%s:%s" eldev-project-dir eldev-project-dir)
+                "-w" eldev-project-dir
+                "-e" (format "USERNAME=%s" (user-login-name))
+                "-e" (format "LOCAL_USER_ID=%s" (user-uid)))
+          (when as-gui eldev--emacs-gui-args)
+          (unless eldev-skip-global-config
+            (list "-v" (format "%s:%s"
+                               eldev-user-config-file
+                               eldev-user-config-file)
+                  "-v" (format "%s:%s"
+                               (eldev-global-package-archive-cache-dir)
+                               (eldev-global-package-archive-cache-dir))))
+          (eldev--docker-local-dep-mounts)
+          eldev-docker-run-extra-args
+          (list img "eldev")))
 
 (eldev-defcommand eldev-docker (&rest parameters)
   "Launch a specified Emacs version in a docker container.

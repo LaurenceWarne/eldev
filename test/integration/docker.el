@@ -4,10 +4,11 @@
 
 (ert-deftest eldev-docker-emacs-1 ()
   (skip-unless (eldev-docker-executable nil))
+  (shell-command "docker build -t local/eldev-emacs-dev .")
   (eldev--test-run "trivial-project"
       ("--quiet"
        "docker"
-       eldev--docker-emacs-version
+       "local/eldev-emacs-dev" ;eldev--docker-emacs-version
        "emacs"
        "--batch"
        "--eval"
@@ -20,8 +21,9 @@
   (eldev--test-run "project-c" ("clean" "all")
     (should (= exit-code 0)))
   (eldev--test-run "project-c"
-      ("docker"
-       eldev--docker-emacs-version
+      ("--trace"
+       "docker"
+       "local/eldev-emacs-dev" ;eldev--docker-emacs-version
        "test")
     (should (= exit-code 0))))
 
