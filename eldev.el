@@ -4105,6 +4105,9 @@ Command line arguments appearing after VERSION will be forwarded to an
 
 Will run \"eldev emacs\" inside an Emacs 25 container.
 
+The contents of `eldev-docker-run-extra-args' will be appended to the
+\"docker run\" call this command makes.
+
 Emacs will not be started as a GUI unless the command is \"emacs\" and
 the \"--batch\" flag is not present."
   :parameters     "VERSION [ARGS...]"
@@ -4117,9 +4120,6 @@ the \"--batch\" flag is not present."
          (as-gui (and (string= "emacs" (nth 1 parameters))
                       (not (member "--batch" parameters))))
          (args (append (eldev--docker-args img as-gui) (cdr parameters))))
-    (eldev-output "Running command '%s %s'"
-                  docker-exec
-                  (mapconcat #'identity args " "))
     (eldev-call-process
         docker-exec
         args
