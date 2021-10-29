@@ -4040,6 +4040,10 @@ be passed to Emacs, else it will most likely fail."
 (defvar eldev-docker-run-extra-args nil
   "Extra arguments to pass to \"docker run\".")
 
+(defvar eldev--xhost-hint
+  "It appears your X server is not accepting connections from the docker container.  Have you ran \"xhost +local:root\"? Error trace:\n"
+  "Message to output if it appears the user has not enabled X forwarding.")
+
 (defun eldev--docker-determine-img (img-string)
   "Return an appropriate docker image based on IMG-STRING."
   (if (string-match-p ".*/.*" img-string)
@@ -4127,7 +4131,11 @@ the \"--batch\" flag is not present."
       (eldev-verbose "Running command '%s %s'"
                      docker-exec
                      (mapconcat #'identity args " "))
-      :die-on-error (format "%s run" docker-exec)
+      :die-on-error
+      (progn
+        (when (string-match-p ".*unavailable, simulating -nw.*" (buffer-string))
+          (eldev-warn eldev--xhost-hint))
+        (format "%s run" docker-exec))
       (eldev--forward-process-output
        (format "Output of the %s process:" docker-exec)
        (format "%s process produced no output" docker-exec)))))
