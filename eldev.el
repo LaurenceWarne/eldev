@@ -4138,7 +4138,10 @@ the \"--batch\" flag is not present."
         (format "%s run" docker-exec))
       (eldev--forward-process-output
        (format "Output of the %s process:" docker-exec)
-       (format "%s process produced no output" docker-exec)))))
+       (format "%s process produced no output" docker-exec)
+       nil
+       ;; nolf since eldev running in the container will add one
+       t))))
 
 
 ;; eldev targets, eldev build, eldev compile, eldev package

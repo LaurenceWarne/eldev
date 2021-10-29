@@ -1102,16 +1102,17 @@ Also, eat up several options from BODY if present:
                      (signal 'eldev-error (list "%s exited with error code %d" (eldev-message-upcase-first description) exit-code))))))
            ,@(or body '(exit-code)))))))
 
-(defun eldev--forward-process-output (&optional header-message header-if-empty-output only-when-verbose)
+(defun eldev--forward-process-output (&optional header-message header-if-empty-output only-when-verbose nolf)
   (if (= (point-min) (point-max))
       (when header-if-empty-output
         (eldev-verbose header-if-empty-output))
     (when header-message
       (eldev-verbose header-message))
-    (if only-when-verbose
-        (eldev-verbose "%s" (buffer-string))
-      (eldev-output "%s" (buffer-string)))))
-
+    (cond ((and only-when-verbose nolf)
+           (eldev-verbose :nolf "%s" (buffer-string)))
+          (only-when-verbose (eldev-verbose "%s" (buffer-string)))
+          (nolf (eldev-output :nolf  "%s"(buffer-string)))
+          (t (eldev-output "%s" (buffer-string))))))
 
 
 ;; Package basics.
