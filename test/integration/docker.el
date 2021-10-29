@@ -17,7 +17,7 @@
 
 (ert-deftest eldev-docker-test-1 ()
   (skip-unless (eldev-docker-executable nil))
-  (eldev--test-run "project-c" ("clean" "all")
+  (eldev--test-run "project-c" ("clean" "test-caches")
     (should (= exit-code 0)))
   (eldev--test-run "project-c"
       ("docker"
