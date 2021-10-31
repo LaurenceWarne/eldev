@@ -4085,11 +4085,19 @@ If AS-GUI is non-nil include arguments necessary to run Emacs as a GUI."
             eldev-docker-run-extra-args
             (list img "eldev"))))
 
+(defun eldev--docker-container-eldev-cmd (args)
+  "Return the eldev command to call in the docker container deduced from ARGS."
+  (car (eldev-filter (not (string-prefix-p "-" it)) args)))
+
 (eldev-defcommand eldev-docker (&rest parameters)
   "Launch a specified Emacs version in a docker container.
 
-This command will execute an eldev command against a specified Emacs
-version with the project loaded with all its dependencies in a docker
+This command will execute the eldev command ELDEV_COMMAND against a
+specified Emacs version with the project loaded with all its
+dependencies in a docker container.
+
+GLOBAL_ARGS such as \"--trace\" may also precede ELDEV_COMMAND, in
+which case they will also be forwarded to the eldev call inside the
 container.
 
 VERSION must be a valid Emacs version, e.g. \"27.2\".
@@ -4114,14 +4122,15 @@ The contents of `eldev-docker-run-extra-args' will be appended to the
 
 Emacs will not be started as a GUI unless the command is \"emacs\" and
 the \"--batch\" flag is not present."
-  :parameters     "VERSION [ARGS...]"
+  :parameters     "VERSION [GLOBAL_ARGS..] ELDEV_COMMAND [ARGS...]"
   :aliases        emacs-docker
   :custom-parsing t
   (unless (car parameters)
     (signal 'eldev-wrong-command-usage `(t "version not specified")))
   (let* ((img (eldev--docker-determine-img (car parameters)))
          (docker-exec (eldev-docker-executable))
-         (as-gui (and (string= "emacs" (nth 1 parameters))
+         (container-cmd (eldev--docker-container-eldev-cmd (cdr parameters)))
+         (as-gui (and (string= "emacs" container-cmd)
                       (not (member "--batch" parameters))))
          (args (append (eldev--docker-args img as-gui) (cdr parameters))))
     (eldev-call-process
