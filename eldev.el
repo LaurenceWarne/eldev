@@ -4086,7 +4086,11 @@ HOME is the home directory of the container user."
            eldev--local-dependencies)))
 
 (defun eldev--docker-create-directories (docker-home)
-  "Make directories required for \"eldev docker\"."
+  "Make directories required for \"eldev docker\" given DOCKER-HOME.
+
+This is necessary since if we mount a volume such that the directory
+on the host does not exist, then it will be created on the container
+owned by root."
   (mapc (lambda (cache-sub-dir)
           (unless (file-exists-p docker-home)
             (make-directory
@@ -4105,35 +4109,35 @@ The global config file and cache will be mounted unless
 `eldev-skip-global-config' is nil.
 
 If AS-GUI is non-nil include arguments necessary to run Emacs as a GUI."
-  (let* ((container-dir (file-name-nondirectory
+  (let* ((container-project-dir (file-name-nondirectory
                         (directory-file-name eldev-project-dir)))
          (container-home (concat "/"
-                                 (file-name-as-directory container-dir)
+                                 (file-name-as-directory container-project-dir)
                                  (file-name-as-directory eldev-cache-dir)
                                  eldev--docker-home-name))
-         (docker-home (concat
-                       (file-name-as-directory (eldev-cache-dir nil t))
-                       eldev--docker-home-name)))
+         (container-eldev-cache-dir
+          (concat (file-name-as-directory container-home) eldev-cache-dir))
+         (docker-home (concat (file-name-as-directory (eldev-cache-dir nil t))
+                              eldev--docker-home-name)))
     (eldev--docker-create-directories docker-home)
     (append (list "run" "--rm"
                   "-e" (format "HOME=%s" container-home)
                   "-u" (format "%s:%s" (user-uid) (group-gid))
-                  "-v" (format "%s:/%s" eldev-project-dir container-dir)
-                  "-w" (concat "/" container-dir))
+                  "-v" (format "%s:/%s" eldev-project-dir container-project-dir)
+                  "-w" (concat "/" container-project-dir))
             (when as-gui eldev--emacs-gui-args)
             (unless eldev-skip-global-config
-              (list "-v" (format "%s:%s/.eldev/config"
+              (list "-v" (format "%s:%s/config"
                                  eldev-user-config-file
-                                 container-home)
-                    "-v" (format "%s:%s/.eldev/%s"
+                                 container-eldev-cache-dir)
+                    "-v" (format "%s:%s/%s"
                                  (eldev-global-package-archive-cache-dir)
-                                 container-home
+                                 container-eldev-cache-dir
                                  eldev-global-cache-directory-name)))
             (eldev--docker-local-dep-mounts container-home)
             eldev-docker-run-extra-args
-            (cons
-             img (funcall eldev--container-bootstrap-cmd-fn
-                          (mapconcat #'identity eldev-args " "))))))
+            (cons img (funcall eldev--container-bootstrap-cmd-fn
+                               (mapconcat #'identity eldev-args " "))))))
 
 (defun eldev--docker-container-eldev-cmd (args)
   "Return the eldev command to call in the docker container deduced from ARGS."
@@ -4157,8 +4161,8 @@ in which case it will be fed directly to \"docker pull\" and
 \"docker run\".  Any string containing a \"/\" will be interpreted as
 such rather than an Emacs version.
 
-Note it will be assumed that eldev is installed on any image that is
-run.
+Note it will be assumed that Emacs and curl are installed on any image
+that is run.
 
 Command line arguments appearing after VERSION will be forwarded to an
 \"eldev\" call within the container.  For example:
