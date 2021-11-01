@@ -4044,14 +4044,36 @@ be passed to Emacs, else it will most likely fail."
   "It appears your X server is not accepting connections from the docker container.  Have you ran \"xhost +local:root\"? Error trace:\n"
   "Message to output if it appears the user has not enabled X forwarding.")
 
+(defvar eldev--container-bootstrap-cmd-fn
+  #'eldev--container-bootsrap-cmd-fn
+  "Function to determine the command used by \"docker run\".
+
+It should take one parameter: the arguments of the \"eldev\" call.")
+
+(defvar eldev--docker-home-name "docker-home"
+  "Name of the home directory of the docker user.")
+
+(defun eldev--container-bootsrap-cmd-fn (eldev-args)
+  "Return a command in the form of an argument list for \"docker run\".
+
+HOME should be the user's home directory on the container and ELDEV-ARGS
+arguments to pass to the \"eldev\" call."
+  (list
+   "sh" "-c"
+   (format
+    "curl -fsSL https://raw.github.com/doublep/eldev/master/webinstall/eldev | sh && export PATH=\"$HOME/.eldev/bin:$PATH\" && eldev %s"
+    eldev-args)))
+
 (defun eldev--docker-determine-img (img-string)
   "Return an appropriate docker image based on IMG-STRING."
   (if (string-match-p ".*/.*" img-string)
       img-string
     (format "silex/emacs:%s-ci-eldev" img-string)))
 
-(defun eldev--docker-local-dep-mounts ()
-  "Return bind mount arguments of local dependencies for docker run."
+(defun eldev--docker-local-dep-mounts (home)
+  "Return bind mount arguments of local dependencies for docker run.
+
+HOME is the home directory of the container user."
   (eldev-flatten-tree
    (mapcar (lambda (local-dep)
              (let* ((dir (nth 3 local-dep))
@@ -4059,31 +4081,59 @@ be passed to Emacs, else it will most likely fail."
                     (container-dir
                      (if (eldev-external-filename dir-rel)
                          dir
-                       (concat "/root/" dir-rel))))
+                       (concat (file-name-as-directory home) dir-rel))))
                (list "-v" (format "%s:%s" (expand-file-name dir) container-dir))))
            eldev--local-dependencies)))
 
-(defun eldev--docker-args (img &optional as-gui)
+(defun eldev--docker-create-directories (docker-home)
+  "Make directories required for \"eldev docker\"."
+  (mapc (lambda (cache-sub-dir)
+          (unless (file-exists-p docker-home)
+            (make-directory
+             (concat (file-name-as-directory docker-home)
+                     (file-name-as-directory eldev-cache-dir)
+                     cache-sub-dir)
+             t)))
+        (list "config" eldev-global-cache-directory-name)))
+
+(defun eldev--docker-args (img eldev-args &optional as-gui)
   "Return command line args to run the docker image IMG.
+
+ELDEV-ARGS will be appended to the eldev call in the container.
 
 The global config file and cache will be mounted unless
 `eldev-skip-global-config' is nil.
 
 If AS-GUI is non-nil include arguments necessary to run Emacs as a GUI."
-  (let ((container-dir (file-name-nondirectory
-                        (directory-file-name eldev-project-dir))))
+  (let* ((container-dir (file-name-nondirectory
+                        (directory-file-name eldev-project-dir)))
+         (container-home (concat "/"
+                                 (file-name-as-directory container-dir)
+                                 (file-name-as-directory eldev-cache-dir)
+                                 eldev--docker-home-name))
+         (docker-home (concat
+                       (file-name-as-directory (eldev-cache-dir nil t))
+                       eldev--docker-home-name)))
+    (eldev--docker-create-directories docker-home)
     (append (list "run" "--rm"
+                  "-e" (format "HOME=%s" container-home)
+                  "-u" (format "%s:%s" (user-uid) (group-gid))
                   "-v" (format "%s:/%s" eldev-project-dir container-dir)
                   "-w" (concat "/" container-dir))
             (when as-gui eldev--emacs-gui-args)
             (unless eldev-skip-global-config
-              (list "-v" (format "%s:/root/.eldev/config" eldev-user-config-file)
-                    "-v" (format "%s:/root/.eldev/%s"
+              (list "-v" (format "%s:%s/.eldev/config"
+                                 eldev-user-config-file
+                                 container-home)
+                    "-v" (format "%s:%s/.eldev/%s"
                                  (eldev-global-package-archive-cache-dir)
+                                 container-home
                                  eldev-global-cache-directory-name)))
-            (eldev--docker-local-dep-mounts)
+            (eldev--docker-local-dep-mounts container-home)
             eldev-docker-run-extra-args
-            (list img "eldev"))))
+            (cons
+             img (funcall eldev--container-bootstrap-cmd-fn
+                          (mapconcat #'identity eldev-args " "))))))
 
 (defun eldev--docker-container-eldev-cmd (args)
   "Return the eldev command to call in the docker container deduced from ARGS."
@@ -4117,7 +4167,7 @@ Command line arguments appearing after VERSION will be forwarded to an
 
 Will run \"eldev emacs\" inside an Emacs 25 container.
 
-The contents of `eldev-docker-run-extra-args' will be appended to the
+The contents of `eldev-docker-run-extra-args' will be added to the
 \"docker run\" call this command makes.
 
 Emacs will not be started as a GUI unless the command is \"emacs\" and
@@ -4129,10 +4179,11 @@ the \"--batch\" flag is not present."
     (signal 'eldev-wrong-command-usage `(t "version not specified")))
   (let* ((img (eldev--docker-determine-img (car parameters)))
          (docker-exec (eldev-docker-executable))
-         (container-cmd (eldev--docker-container-eldev-cmd (cdr parameters)))
+         (escaped-params (mapcar #'eldev-quote-sh-string (cdr parameters)))
+         (container-cmd (eldev--docker-container-eldev-cmd escaped-params))
          (as-gui (and (string= "emacs" container-cmd)
                       (not (member "--batch" parameters))))
-         (args (append (eldev--docker-args img as-gui) (cdr parameters))))
+         (args (append (eldev--docker-args img escaped-params as-gui))))
     (eldev-call-process
         docker-exec
         args
