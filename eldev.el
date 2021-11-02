@@ -4056,13 +4056,25 @@ It should take one parameter: the arguments of the \"eldev\" call.")
 (defun eldev--container-bootsrap-cmd-fn (eldev-args)
   "Return a command in the form of an argument list for \"docker run\".
 
-HOME should be the user's home directory on the container and ELDEV-ARGS
-arguments to pass to the \"eldev\" call."
+ELDEV-ARGS will be passed to an \"eldev\" call."
   (list
    "sh" "-c"
    (format
     "curl -fsSL https://raw.github.com/doublep/eldev/master/webinstall/eldev | sh && export PATH=\"$HOME/.eldev/bin:$PATH\" && eldev %s"
     eldev-args)))
+
+(defun eldev--container-eldev-source-install-cmd (eldev-src-repo-dir eldev-args)
+  "Return command for \"docker run\" that will install eldev from source.
+
+Return a command that installs eldev from the source repository
+ELDEV-SRC-REPO-DIR (a full path on the container), and then calls eldev
+with ELDEV-ARGS."
+  (list
+   "sh" "-c"
+   (format "ELDEV_LOCAL=%s %s/bin/eldev %s"
+           eldev-src-repo-dir
+           eldev-src-repo-dir
+           eldev-args)))
 
 (defun eldev--docker-determine-img (img-string)
   "Return an appropriate docker image based on IMG-STRING."
@@ -4118,7 +4130,8 @@ If AS-GUI is non-nil include arguments necessary to run Emacs as a GUI."
          (container-eldev-cache-dir
           (concat (file-name-as-directory container-home) eldev-cache-dir))
          (docker-home (concat (file-name-as-directory (eldev-cache-dir nil t))
-                              eldev--docker-home-name)))
+                              eldev--docker-home-name))
+         (eldev-local-value (getenv "ELDEV_LOCAL")))
     (eldev--docker-create-directories docker-home)
     (append (list "run" "--rm"
                   "-e" (format "HOME=%s" container-home)
@@ -4126,6 +4139,8 @@ If AS-GUI is non-nil include arguments necessary to run Emacs as a GUI."
                   "-v" (format "%s:/%s" eldev-project-dir container-project-dir)
                   "-w" (concat "/" container-project-dir))
             (when as-gui eldev--emacs-gui-args)
+            (when eldev-local-value
+              (list "-v" (format "%s:/eldev" eldev-local-value)))
             (unless eldev-skip-global-config
               (list "-v" (format "%s:%s/config"
                                  eldev-user-config-file
@@ -4187,7 +4202,12 @@ the \"--batch\" flag is not present."
          (container-cmd (eldev--docker-container-eldev-cmd escaped-params))
          (as-gui (and (string= "emacs" container-cmd)
                       (not (member "--batch" parameters))))
-         (args (append (eldev--docker-args img escaped-params as-gui))))
+         (args (append (eldev--docker-args img escaped-params as-gui)))
+         (eldev--container-bootsrap-cmd-fn
+          (if (getenv "ELDEV_LOCAL")
+              (apply-partially
+               #'eldev--container-eldev-source-install-cmd "/eldev")
+            eldev--container-bootsrap-cmd-fn)))
     (eldev-call-process
         docker-exec
         args
